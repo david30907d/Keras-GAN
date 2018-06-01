@@ -1,5 +1,4 @@
 from __future__ import print_function, division
-import scipy
 
 from keras.datasets import mnist
 from keras_contrib.layers.normalization import InstanceNormalization
@@ -9,12 +8,11 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
-import datetime
 import matplotlib.pyplot as plt
-import sys
 from data_loader import DataLoader
 import numpy as np
-import os
+from keras import backend as K
+import os, subprocess, sys, datetime, scipy
 
 class Pix2Pix():
     def __init__(self):
@@ -69,7 +67,7 @@ class Pix2Pix():
 
         self.combined = Model(inputs=[img_A, img_B], outputs=[valid, fake_A])
         self.combined.compile(loss=['mse', 'mae'],
-                              loss_weights=[1, 100],
+                              loss_weights=[100, 1],
                               optimizer=optimizer)
 
     def build_generator(self):
@@ -171,7 +169,7 @@ class Pix2Pix():
                 # -----------------
 
                 # Train the generators
-                g_loss = self.combined.train_on_batch([imgs_A, imgs_B], [valid, imgs_A])
+                g_loss = self.combined.train_on_batch([imgs_A, imgs_B], [valid, imgs_B])
 
                 elapsed_time = datetime.datetime.now() - start_time
                 # Plot the progress
@@ -186,6 +184,7 @@ class Pix2Pix():
                     self.sample_images(epoch, batch_i)
 
     def sample_images(self, epoch, batch_i):
+        subprocess.call(['rm', 'images/{}'.format(self.dataset_name)+'/*'])
         os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
         r, c = 3, 3
 
@@ -209,7 +208,15 @@ class Pix2Pix():
         fig.savefig("images/%s/%d_%d.png" % (self.dataset_name, epoch, batch_i))
         plt.close()
 
-
 if __name__ == '__main__':
+    print(sys.argv[1])
     gan = Pix2Pix()
     gan.train(epochs=200, batch_size=1, sample_interval=200)
+
+    gan.generator.save(sys.argv[1])
+    # trigger gc manually, or it will raise error occasionally.
+    K.clear_session()
+
+    # load
+    # from keras.models import load_model
+    # model = load_model(sys.argv[1])

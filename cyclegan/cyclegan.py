@@ -15,6 +15,7 @@ import sys
 from data_loader import DataLoader
 import numpy as np
 import os
+from keras import backend as K
 
 class CycleGAN():
     def __init__(self):
@@ -25,7 +26,7 @@ class CycleGAN():
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
         # Configure data loader
-        self.dataset_name = 'apple2orange'
+        self.dataset_name = 'cycle'
         self.data_loader = DataLoader(dataset_name=self.dataset_name,
                                       img_res=(self.img_rows, self.img_cols))
 
@@ -255,4 +256,9 @@ class CycleGAN():
 
 if __name__ == '__main__':
     gan = CycleGAN()
-    gan.train(epochs=200, batch_size=1, sample_interval=200)
+    gan.train(epochs=200000, batch_size=1, sample_interval=200)
+
+    gan.g_AB.save('g_AB.h5')
+    gan.g_BA.save('g_BA.h5')
+    # trigger gc manually, or it will raise error occasionally.
+    K.clear_session()

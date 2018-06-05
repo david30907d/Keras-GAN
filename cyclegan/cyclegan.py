@@ -16,9 +16,12 @@ from data_loader import DataLoader
 import numpy as np
 import os
 from keras import backend as K
+from keras.callbacks import TensorBoard
+import tensorflow as tf
 
 class CycleGAN():
-    def __init__(self):
+    
+    def __init__(self, log_path='logs'):
         # Input shape
         self.img_rows = 128
         self.img_cols = 128
@@ -26,7 +29,7 @@ class CycleGAN():
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
         # Configure data loader
-        self.dataset_name = 'cycle'
+        self.dataset_name = 'apple2orange'
         self.data_loader = DataLoader(dataset_name=self.dataset_name,
                                       img_res=(self.img_rows, self.img_cols))
 
@@ -98,6 +101,11 @@ class CycleGAN():
                                             self.lambda_cycle, self.lambda_cycle,
                                             self.lambda_id, self.lambda_id ],
                             optimizer=optimizer)
+
+        # tensorboard
+        self.log_path = log_path
+        self.callback = TensorBoard(self.log_path)
+        self.callback.set_model(self.combined)
 
     def build_generator(self):
         """U-Net Generator"""
@@ -214,12 +222,14 @@ class CycleGAN():
                                                                             np.mean(g_loss[5:6]),
                                                                             elapsed_time))
 
+                
                 # If at save interval => save generated image samples
                 if batch_i % sample_interval == 0:
                     self.sample_images(epoch, batch_i)
+            self.write_log(self.callback, ['D loss', 'acc', 'G loss', 'adv', 'recon', 'id'], [d_loss[0], 100*d_loss[1], g_loss[0], np.mean(g_loss[1:3]), np.mean(g_loss[3:5]), np.mean(g_loss[5:6])], epoch)
 
     def sample_images(self, epoch, batch_i):
-        os.makedirs('%s' % self.dataset_name, exist_ok=True)
+        os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
         r, c = 2, 3
 
         imgs_A = self.data_loader.load_data(domain="A", batch_size=1, is_testing=True)
@@ -253,12 +263,25 @@ class CycleGAN():
         fig.savefig("images/%s/%d_%d.png" % (self.dataset_name, epoch, batch_i))
         plt.close()
 
+    def write_log(self, callback, names, logs, batch_no):
+        for name, value in zip(names, logs):
+            summary = tf.Summary()
+            summary_value = summary.value.add()
+            summary_value.simple_value = value
+            summary_value.tag = name
+            callback.writer.add_summary(summary, batch_no)
+
 
 if __name__ == '__main__':
     gan = CycleGAN()
-    gan.train(epochs=200000, batch_size=1, sample_interval=200)
+    gan.train(epochs=10, batch_size=1, sample_interval=200)
 
     gan.g_AB.save('g_AB.h5')
     gan.g_BA.save('g_BA.h5')
     # trigger gc manually, or it will raise error occasionally.
     K.clear_session()
+
+    from keras.models import load_model
+    gan = CycleGAN()
+    gan.g_AB = load_model('g_AB.h5')
+    gan.g_BA = load_model('g_BA.h5')

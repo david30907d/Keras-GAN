@@ -19,9 +19,15 @@ from keras import backend as K
 from keras.callbacks import TensorBoard
 import tensorflow as tf
 
+# prevent Keras take up all GPU RAM
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+from keras.backend.tensorflow_backend import set_session
+set_session(tf.Session(config=config))
+
 class CycleGAN():
     
-    def __init__(self, log_path='logs'):
+    def __init__(self, dataset_name, log_path='logs'):
         # Input shape
         self.img_rows = 128
         self.img_cols = 128
@@ -29,7 +35,7 @@ class CycleGAN():
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
         # Configure data loader
-        self.dataset_name = 'apple2orange'
+        self.dataset_name = dataset_name
         self.data_loader = DataLoader(dataset_name=self.dataset_name,
                                       img_res=(self.img_rows, self.img_cols))
 
@@ -228,6 +234,10 @@ class CycleGAN():
                     self.sample_images(epoch, batch_i)
             self.write_log(self.callback, ['D loss', 'acc', 'G loss', 'adv', 'recon', 'id'], [d_loss[0], 100*d_loss[1], g_loss[0], np.mean(g_loss[1:3]), np.mean(g_loss[3:5]), np.mean(g_loss[5:6])], epoch)
 
+            if epoch % 100 == 0:
+                gan.g_AB.save('g_AB.{}.h5'.format(sys.argv[1]))
+                gan.g_BA.save('g_BA.{}.h5'.format(sys.argv[1]))
+
     def sample_images(self, epoch, batch_i):
         os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
         r, c = 2, 3
@@ -273,15 +283,16 @@ class CycleGAN():
 
 
 if __name__ == '__main__':
-    gan = CycleGAN()
-    gan.train(epochs=10, batch_size=1, sample_interval=200)
+    import sys
+    gan = CycleGAN(sys.argv[1])
+    gan.train(epochs=4400, batch_size=1, sample_interval=200)
 
-    gan.g_AB.save('g_AB.h5')
-    gan.g_BA.save('g_BA.h5')
+    gan.g_AB.save('g_AB.{}.h5'.format(sys.argv[2]))
+    gan.g_BA.save('g_BA.{}.h5'.format(sys.argv[2]))
     # trigger gc manually, or it will raise error occasionally.
     K.clear_session()
 
     from keras.models import load_model
     gan = CycleGAN()
-    gan.g_AB = load_model('g_AB.h5')
-    gan.g_BA = load_model('g_BA.h5')
+    gan.g_AB = load_model('g_AB.{}.h5'.format(sys.argv[2]))
+    gan.g_BA = load_model('g_BA.{}.h5'.format(sys.argv[2]))

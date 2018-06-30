@@ -19,15 +19,16 @@ from keras import backend as K
 from keras.callbacks import TensorBoard
 import tensorflow as tf
 
-# prevent Keras take up all GPU RAM
-config = tf.ConfigProto()
-config.gpu_options.allow_growth=True
-from keras.backend.tensorflow_backend import set_session
-set_session(tf.Session(config=config))
+# # prevent Keras take up all GPU RAM
+# config = tf.ConfigProto()
+# config.gpu_options.allow_growth=True
+# from keras.backend.tensorflow_backend import set_session
+# set_session(tf.Session(config=config))
+
 
 class CycleGAN():
     
-    def __init__(self, dataset_name, log_path='logs'):
+    def __init__(self, dataset_name, model_name, lambda_cycle=3):
         # Input shape
         self.img_rows = 128
         self.img_cols = 128
@@ -36,6 +37,7 @@ class CycleGAN():
 
         # Configure data loader
         self.dataset_name = dataset_name
+        self.model_name = model_name
         self.data_loader = DataLoader(dataset_name=self.dataset_name,
                                       img_res=(self.img_rows, self.img_cols))
 
@@ -49,7 +51,7 @@ class CycleGAN():
         self.df = 64
 
         # Loss weights
-        self.lambda_cycle = 10.0                    # Cycle-consistency loss
+        self.lambda_cycle = int(lambda_cycle)            # Cycle-consistency loss
         self.lambda_id = 0.1 * self.lambda_cycle    # Identity loss
 
         optimizer = Adam(0.0002, 0.5)
@@ -109,7 +111,7 @@ class CycleGAN():
                             optimizer=optimizer)
 
         # tensorboard
-        self.log_path = log_path
+        self.log_path = model_name
         self.callback = TensorBoard(self.log_path)
         self.callback.set_model(self.combined)
 
@@ -141,8 +143,12 @@ class CycleGAN():
         d2 = conv2d(d1, self.gf*2)
         d3 = conv2d(d2, self.gf*4)
         d4 = conv2d(d3, self.gf*8)
+        d4 = conv2d(d3, self.gf*8)
+        d4 = conv2d(d3, self.gf*8)
 
         # Upsampling
+        u1 = deconv2d(d4, d3, self.gf*4)
+        u1 = deconv2d(d4, d3, self.gf*4)
         u1 = deconv2d(d4, d3, self.gf*4)
         u2 = deconv2d(u1, d2, self.gf*2)
         u3 = deconv2d(u2, d1, self.gf)
@@ -167,6 +173,9 @@ class CycleGAN():
         d1 = d_layer(img, self.df, normalization=False)
         d2 = d_layer(d1, self.df*2)
         d3 = d_layer(d2, self.df*4)
+        d4 = d_layer(d3, self.df*8)
+        d4 = d_layer(d3, self.df*8)
+        d4 = d_layer(d3, self.df*8)
         d4 = d_layer(d3, self.df*8)
 
         validity = Conv2D(1, kernel_size=4, strides=1, padding='same')(d4)
@@ -235,11 +244,11 @@ class CycleGAN():
             self.write_log(self.callback, ['D loss', 'acc', 'G loss', 'adv', 'recon', 'id'], [d_loss[0], 100*d_loss[1], g_loss[0], np.mean(g_loss[1:3]), np.mean(g_loss[3:5]), np.mean(g_loss[5:6])], epoch)
 
             if epoch % 100 == 0:
-                gan.g_AB.save('g_AB.{}.h5'.format(sys.argv[1]))
-                gan.g_BA.save('g_BA.{}.h5'.format(sys.argv[1]))
+                gan.g_AB.save('g_AB.{}.h5'.format(self.model_name))
+                gan.g_BA.save('g_BA.{}.h5'.format(self.model_name))
 
     def sample_images(self, epoch, batch_i):
-        os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
+        os.makedirs('images/%s' % self.model_name, exist_ok=True)
         r, c = 2, 3
 
         imgs_A = self.data_loader.load_data(domain="A", batch_size=1, is_testing=True)
@@ -270,7 +279,7 @@ class CycleGAN():
                 axs[i, j].set_title(titles[j])
                 axs[i,j].axis('off')
                 cnt += 1
-        fig.savefig("images/%s/%d_%d.png" % (self.dataset_name, epoch, batch_i))
+        fig.savefig("images/%s/%d_%d.png" % (self.model_name, epoch, batch_i))
         plt.close()
 
     def write_log(self, callback, names, logs, batch_no):
@@ -284,15 +293,16 @@ class CycleGAN():
 
 if __name__ == '__main__':
     import sys
-    gan = CycleGAN(sys.argv[1])
-    gan.train(epochs=4400, batch_size=1, sample_interval=200)
+    os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[4]
+    gan = CycleGAN(sys.argv[1], sys.argv[2], sys.argv[3])
+    gan.train(epochs=440000, batch_size=1, sample_interval=200)
 
-    gan.g_AB.save('g_AB.{}.h5'.format(sys.argv[2]))
-    gan.g_BA.save('g_BA.{}.h5'.format(sys.argv[2]))
+    gan.g_AB.save('g_AB.{}.h5'.format(gan.model_name))
+    gan.g_BA.save('g_BA.{}.h5'.format(gan.model_name))
     # trigger gc manually, or it will raise error occasionally.
     K.clear_session()
 
-    from keras.models import load_model
-    gan = CycleGAN()
-    gan.g_AB = load_model('g_AB.{}.h5'.format(sys.argv[2]))
-    gan.g_BA = load_model('g_BA.{}.h5'.format(sys.argv[2]))
+    # from keras.models import load_model
+    # gan = CycleGAN(sys.argv[1], sys.argv[2], sys.argv[3])
+    # gan.g_AB = load_model('g_AB.{}.h5'.format(gan.model_name))
+    # gan.g_BA = load_model('g_BA.{}.h5'.format(gan.model_name))
